@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notificationBridge = NotificationBridge()
     private var mainWindowController: MainWindowController?
     private var updater: Updater?
+    private var settingsWindowController: SettingsWindowController?
 
     private var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        Preferences.registerDefaults()
         let updater = Updater()
         self.updater = updater
         NSApp.mainMenu = MainMenu.make(target: self, updater: updater)
@@ -50,6 +52,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        guard let updater else { return }
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController(updater: updater)
+        }
+        settingsWindowController?.show()
     }
 
     @objc func showMainWindow(_ sender: Any?) {

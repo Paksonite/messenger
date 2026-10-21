@@ -17,6 +17,16 @@ final class BadgeController {
     private var titleCount = 0
     private var lastAttention: ContinuousClock.Instant?
     private var expiryTask: Task<Void, Never>?
+    private var defaultsObserver: NSObjectProtocol?
+
+    init() {
+        // Re-apply the badge when "Show unread count on the Dock icon" changes in Settings.
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyBadge() }
+        }
+    }
 
     /// Returns nil for titles that carry no count information, such as the
     /// "Jane sent a message" title Messenger flashes while something is unread.
@@ -55,8 +65,13 @@ final class BadgeController {
         guard newCount != count else { return }
         let increased = newCount > count
         count = newCount
-        NSApp.dockTile.badgeLabel = newCount > 0 ? String(newCount) : nil
+        applyBadge()
         Log.notifications.info("unread count: \(newCount)")
         if increased { onIncrease?(newCount) }
+    }
+
+    private func applyBadge() {
+        let label = Preferences.showDockBadge && count > 0 ? String(count) : nil
+        if NSApp.dockTile.badgeLabel != label { NSApp.dockTile.badgeLabel = label }
     }
 }

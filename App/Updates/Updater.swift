@@ -19,10 +19,15 @@ final class Updater: NSObject {
         controller.checkForUpdates(sender)
     }
 
+    var automaticallyChecksForUpdates: Bool {
+        get { controller.updater.automaticallyChecksForUpdates }
+        set { controller.updater.automaticallyChecksForUpdates = newValue }
+    }
+
     private func postReminder(version: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Messenger \(version) is available"
-        content.body = "Click to install the update."
+        content.title = String(localized: "Messenger \(version) is available")
+        content.body = String(localized: "Click to install the update.")
         content.userInfo = ["kind": Self.notificationKind]
         let request = UNNotificationRequest(identifier: Self.notificationKind, content: content, trigger: nil)
         // Completion handler form: UNUserNotificationCenter is not Sendable in older SDKs.
