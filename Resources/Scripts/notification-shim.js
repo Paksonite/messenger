@@ -1,5 +1,5 @@
 // Bridges the web Notification API to native macOS notifications.
-// Injected at document start into the main frame; talks to NotificationBridge.swift.
+// Injected at document start into every frame; talks to NotificationBridge.swift.
 (() => {
   "use strict";
   if (window.__messengerBridge) return;
@@ -82,11 +82,44 @@
     }
   }
 
+  const diagnostics = window.__messengerDiagnostics === true;
+  const frame = window === window.top ? "main" : "subframe";
+  const caller = () => (new Error().stack ?? "").split("\n")[2]?.trim().slice(0, 160) ?? "?";
+
+  let notificationReads = 0;
   Object.defineProperty(window, "Notification", {
-    value: BridgedNotification,
     configurable: true,
-    writable: true,
+    get() {
+      if (diagnostics && ++notificationReads <= 5) log(`window.Notification read #${notificationReads} at ${caller()}`);
+      return BridgedNotification;
+    },
+    set() {
+      log("page tried to replace window.Notification");
+    },
   });
+
+  if (diagnostics) {
+    log(
+      `diagnostics ${frame}: serviceWorker=${"serviceWorker" in navigator} PushManager=${"PushManager" in window} ` +
+        `visibility=${document.visibilityState} focus=${document.hasFocus()}`
+    );
+    document.addEventListener("visibilitychange", () => log(`visibility ${document.visibilityState}`));
+    window.addEventListener("focus", () => log("window focus"));
+    window.addEventListener("blur", () => log("window blur"));
+
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      log(`media.play ${(this.currentSrc || this.src || "(no src)").slice(0, 160)}`);
+      return play.apply(this, args);
+    };
+    const start = window.AudioBufferSourceNode?.prototype.start;
+    if (start) {
+      AudioBufferSourceNode.prototype.start = function (...args) {
+        log(`AudioBufferSourceNode.start at ${caller()}`);
+        return start.apply(this, args);
+      };
+    }
+  }
 
   // Page-initiated service worker notifications. Push from inside the worker is not available in WKWebView.
   const registration = window.ServiceWorkerRegistration?.prototype;
@@ -145,5 +178,5 @@
     }),
   });
 
-  log(`shim installed on ${location.host}${location.pathname}`);
+  if (frame === "main" || diagnostics) log(`shim installed (${frame}) on ${location.host}${location.pathname}`);
 })();

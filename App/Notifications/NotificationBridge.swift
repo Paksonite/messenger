@@ -12,14 +12,55 @@ final class NotificationBridge: NSObject {
 
     private let center = UNUserNotificationCenter.current()
 
+    /// How long to wait for a web notification after the unread count goes up before posting a fallback.
+    private static let fallbackDelay: Duration = .seconds(2)
+    private var lastWebNotification = Date.distantPast
+    /// Latest title Messenger flashed while something is unread, e.g. "Jane sent a message".
+    private var attentionTitle: (text: String, date: Date)?
+
+    private var isWindowFocused: Bool {
+        NSApp.isActive && webView?.window?.isKeyWindow == true
+    }
+
     func requestAuthorization() {
         Task {
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-                Log.notifications.info("authorization granted: \(granted)")
+                let settings = await center.notificationSettings()
+                Log.notifications.info(
+                    "authorization granted: \(granted), alert style: \(settings.alertStyle.rawValue), sound: \(settings.soundSetting.rawValue)"
+                )
             } catch {
                 Log.notifications.error("authorization failed: \(error.localizedDescription, privacy: .public)")
             }
+        }
+    }
+
+    func titleChanged(_ title: String?) {
+        guard let title, !title.isEmpty, BadgeController.unreadCount(fromTitle: title) == nil else { return }
+        attentionTitle = (title, Date())
+    }
+
+    /// Fallback for when the page raises the unread count without calling the Notification API.
+    func unreadCountIncreased(to count: Int) {
+        Task {
+            try? await Task.sleep(for: Self.fallbackDelay)
+            let freshness = Double(Self.fallbackDelay.components.seconds) * 2
+            guard Date().timeIntervalSince(lastWebNotification) > freshness else { return }
+            guard !isWindowFocused else { return }
+
+            let recentTitle = attentionTitle.flatMap { Date().timeIntervalSince($0.date) < freshness ? $0.text : nil }
+            Log.notifications.info("no web notification for unread count \(count), posting fallback")
+            // Messenger plays its own sound for new messages, so the fallback stays silent.
+            show(Payload(
+                id: "fallback-\(UUID().uuidString)",
+                source: "fallback",
+                title: "Messenger",
+                body: recentTitle ?? (count == 1 ? "New message" : "\(count) unread chats"),
+                tag: "fallback",
+                icon: nil,
+                silent: true
+            ))
         }
     }
 
@@ -38,6 +79,7 @@ final class NotificationBridge: NSObject {
 
     private func show(_ payload: Payload) {
         Log.notifications.info("notification from \(payload.source, privacy: .public): \(payload.title, privacy: .private)")
+        if payload.source != "fallback" { lastWebNotification = Date() }
         Task {
             let content = UNMutableNotificationContent()
             content.title = payload.title
@@ -105,6 +147,16 @@ extension NotificationBridge {
         let tag: String
         let icon: URL?
         let silent: Bool
+
+        init(id: String, source: String, title: String, body: String, tag: String, icon: URL?, silent: Bool) {
+            self.id = id
+            self.source = source
+            self.title = title
+            self.body = body
+            self.tag = tag
+            self.icon = icon
+            self.silent = silent
+        }
 
         init?(_ body: [String: Any]) {
             guard let id = body["id"] as? String, !id.isEmpty else { return nil }

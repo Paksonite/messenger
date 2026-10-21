@@ -19,9 +19,14 @@ final class WebViewController: NSViewController {
         webView.allowsBackForwardNavigationGestures = false
         webView.isInspectable = Self.isInspectorEnabled
         bridge.webView = webView
+        badge.onIncrease = { [weak bridge] count in bridge?.unreadCountIncreased(to: count) }
 
-        titleObservation = webView.observe(\.title, options: [.initial, .new]) { [weak self] webView, _ in
+        titleObservation = webView.observe(\.title, options: [.initial, .new]) { [weak self, weak bridge] webView, _ in
             MainActor.assumeIsolated {
+                if Log.isVerbose {
+                    Log.web.info("title: \(webView.title ?? "", privacy: .public)")
+                }
+                bridge?.titleChanged(webView.title)
                 self?.badge.update(title: webView.title)
             }
         }

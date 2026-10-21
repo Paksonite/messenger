@@ -13,9 +13,14 @@ enum WebViewConfigurationFactory {
         configuration.mediaTypesRequiringUserActionForPlayback = []
 
         let contentController = WKUserContentController()
+        if Log.isVerbose {
+            contentController.addUserScript(
+                WKUserScript(source: "window.__messengerDiagnostics = true;", injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            )
+        }
         if let source = script(named: "notification-shim") {
             contentController.addUserScript(
-                WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+                WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
             )
         } else {
             Log.web.error("notification-shim.js missing from bundle")
