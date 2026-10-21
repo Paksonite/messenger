@@ -17,6 +17,11 @@ struct MessagePreviewTests {
         #expect(preview == MessagePreview(sender: "Jane", text: "Ping"))
     }
 
+    @Test func parsesRealRowWithPresenceAndUnreadLabel() {
+        let preview = MessagePreview(lines: ["Aktywny teraz", "Myszka ❤️🐣🐭 Nieprzeczytana wiadomość:", "To ide", "·", "1 min"])
+        #expect(preview == MessagePreview(sender: "Myszka ❤️🐣🐭", text: "To ide"))
+    }
+
     @Test func keepsTextThatLooksLikeTimeWhenItIsTheOnlyLine() {
         #expect(MessagePreview(lines: ["Jane", "5 min"])?.text == "5 min")
     }

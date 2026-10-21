@@ -6,17 +6,23 @@ struct MessagePreview: Equatable {
     let sender: String
     let text: String
 
-    /// Screen reader labels Messenger puts inside rows; dropped before parsing.
+    /// Presence and screen reader labels Messenger puts inside rows; dropped before parsing.
     private static let noise: Set<String> = [
-        "·", "Unread message:", "Nieprzeczytana wiadomość:", "Active now", "Aktywny(-a) teraz",
+        "·", "Unread message:", "Nieprzeczytana wiadomość:",
+        "Active now", "Aktywny teraz", "Aktywna teraz", "Aktywny(-a) teraz",
     ]
+
+    /// Unread marker appended to the name line, e.g. "Jane Unread message:".
+    private static var unreadSuffix: Regex<(Substring, Substring)> {
+        /\s*(Unread message|Nieprzeczytana wiadomość):\s*$/
+    }
 
     /// Prefixes of the user's own messages, which should not notify.
     private static let ownPrefixes = ["You: ", "You sent", "Ty: ", "Wysłano"]
 
     init?(lines: [String]) {
         let lines = lines
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { $0.replacing(Self.unreadSuffix, with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && !Self.noise.contains($0) }
         guard let sender = lines.first else { return nil }
 
