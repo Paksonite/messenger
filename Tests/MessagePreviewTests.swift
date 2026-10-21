@@ -22,6 +22,11 @@ struct MessagePreviewTests {
         #expect(preview == MessagePreview(sender: "Myszka ❤️🐣🐭", text: "To ide"))
     }
 
+    @Test func parsesReactionRow() {
+        let preview = MessagePreview(lines: ["Katarzyna Szafrańska", "Nieprzeczytana wiadomość:", "Reakcja ❤️ na T…", "·", "1 dzień"])
+        #expect(preview == MessagePreview(sender: "Katarzyna Szafrańska", text: "Reakcja ❤️ na T…"))
+    }
+
     @Test func keepsTextThatLooksLikeTimeWhenItIsTheOnlyLine() {
         #expect(MessagePreview(lines: ["Jane", "5 min"])?.text == "5 min")
     }

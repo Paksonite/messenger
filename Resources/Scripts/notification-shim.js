@@ -139,14 +139,6 @@
       .filter((row) => row.threadId && row.lines.length >= 2 && row.image)
       .sort((a, b) => a.top - b.top);
 
-  const latestThread = () =>
-    conversationRows().map((row) => ({
-      href: row.link.href,
-      threadId: row.threadId,
-      lines: rowLines(row.link),
-      icon: absolute(row.image.currentSrc || row.image.src || row.image.getAttribute("xlink:href") || row.image.getAttribute("href")),
-    }))[0] ?? null;
-
   const isVisible = (element) => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -161,13 +153,30 @@
       return `opened chat ${index}`;
     },
     newMessage() {
+      const label = /^(new message|nowa wiadomość|compose|utwórz (nową )?wiadomość|napisz wiadomość)/i;
+      const button = [...document.querySelectorAll("[aria-label]")].find(
+        (element) => isVisible(element) && label.test(element.getAttribute("aria-label").trim())
+      );
+      if (button) {
+        button.click();
+        return `clicked "${button.getAttribute("aria-label")}"`;
+      }
       const link = [...document.querySelectorAll('a[href*="/new"]')].find(isVisible);
       if (link) {
         link.click();
         return "clicked new message link";
       }
-      location.assign("/new/");
-      return "navigated to /new/";
+      if (diagnostics) {
+        const labels = [...document.querySelectorAll('[role="button"][aria-label], a[aria-label]')]
+          .filter(isVisible)
+          .map((element) => element.getAttribute("aria-label"))
+          .slice(0, 40);
+        log(`newMessage candidates: ${labels.join(" | ")}`);
+      }
+      // In-page navigation instead of loading /new/, which reloads the whole app.
+      history.pushState(null, "", "/new/");
+      dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      return "pushState /new/";
     },
     focusSearch() {
       const input = [...document.querySelectorAll('input[type="search"], input[role="combobox"]')].find(isVisible);
@@ -185,25 +194,61 @@
     else location.assign(href);
   };
 
+  // A new message moves its chat to the top, but a reaction only updates the row in place. So the
+  // notification is built from the row whose text changed since the last snapshot, falling back to
+  // the top row. Times ("2 min") and presence ("Aktywny teraz") are ignored when comparing.
+  const comparableText = (row) =>
+    row.lines
+      .map((line) => line.replace(/\s+·\s+[^·]{1,12}$/, ""))
+      .filter((line) => !/^(·|\d+\s?\p{L}{1,6}\.?|now|just now|teraz|active now|aktywn\S* teraz)$/iu.test(line))
+      .join("\n");
+
+  let snapshot = new Map();
+  const takeSnapshot = () => {
+    snapshot = new Map(conversationRows().map((row) => [row.threadId, comparableText(row)]));
+  };
+  const changedRow = () => conversationRows().find((row) => snapshot.get(row.threadId) !== comparableText(row));
+
+  const describe = (row) => ({
+    href: row.link.href,
+    threadId: row.threadId,
+    lines: rowLines(row.link),
+    icon: absolute(row.image.currentSrc || row.image.src || row.image.getAttribute("xlink:href") || row.image.getAttribute("href")),
+  });
+
+  const notifyRow = (row, reason) => {
+    const thread = describe(row);
+    const id = nextId();
+    live.set(id, {
+      __fire(name) {
+        if (name === "click") openThread(thread.href);
+      },
+    });
+    if (diagnostics) log(`message row picked: ${reason}`);
+    post({ type: "message", id, threadId: thread.threadId, lines: thread.lines, icon: thread.icon });
+    takeSnapshot();
+  };
+
   let messageTimer = null;
   const onMessageSound = () => {
     clearTimeout(messageTimer);
-    // Give the chat list a moment to move the new message to the top.
+    // Give the chat list a moment to update; retry once if no row changed yet.
     messageTimer = setTimeout(() => {
-      const thread = latestThread();
-      if (!thread) {
-        log("message sound, but no chat list rows found");
-        return;
-      }
-      const id = nextId();
-      live.set(id, {
-        __fire(name) {
-          if (name === "click") openThread(thread.href);
-        },
-      });
-      post({ type: "message", id, threadId: thread.threadId, lines: thread.lines, icon: thread.icon });
+      const changed = changedRow();
+      if (changed) return notifyRow(changed, "changed");
+      messageTimer = setTimeout(() => {
+        const row = changedRow() ?? conversationRows()[0];
+        if (!row) return log("message sound, but no chat list rows found");
+        notifyRow(row, snapshot.get(row.threadId) !== comparableText(row) ? "changed (retry)" : "top row");
+      }, 800);
     }, 400);
   };
+
+  if (frame === "main") {
+    // Keep the snapshot current while nothing arrives: the user's own reading and sending also change rows.
+    document.addEventListener("visibilitychange", takeSnapshot);
+    setInterval(takeSnapshot, 30000);
+  }
 
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function (...args) {
