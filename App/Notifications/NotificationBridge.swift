@@ -151,6 +151,11 @@ final class NotificationBridge: NSObject {
         return (try? data.write(to: file)) != nil ? file : nil
     }
 
+    nonisolated static func iconURL(_ value: Any?) -> URL? {
+        guard let string = value as? String, let url = URL(string: string), NavigationPolicy.isAllowedIconURL(url) else { return nil }
+        return url
+    }
+
     private static func jsStringLiteral(_ value: String) -> String? {
         guard let data = try? JSONEncoder().encode(value) else { return nil }
         return String(data: data, encoding: .utf8)
@@ -158,7 +163,17 @@ final class NotificationBridge: NSObject {
 }
 
 extension NotificationBridge: WKScriptMessageHandler {
+    /// The handler is reachable from every frame, including embedded third-party ones, which could
+    /// otherwise post fake notifications or make the app fetch arbitrary URLs as icons.
+    nonisolated static func acceptsMessage(isMainFrame: Bool, originHost: String) -> Bool {
+        isMainFrame && NavigationPolicy.isInternal(host: originHost)
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard Self.acceptsMessage(isMainFrame: message.frameInfo.isMainFrame, originHost: message.frameInfo.securityOrigin.host) else {
+            Log.bridge.error("ignored bridge message from \(message.frameInfo.securityOrigin.host, privacy: .private)")
+            return
+        }
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
         case "notification":
@@ -169,7 +184,7 @@ extension NotificationBridge: WKScriptMessageHandler {
                 id: id,
                 threadID: body["threadId"] as? String ?? "",
                 lines: lines,
-                icon: (body["icon"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+                icon: Self.iconURL(body["icon"])
             )
         case "notification-close":
             if let id = body["id"] as? String { remove(id: id) }
@@ -208,7 +223,7 @@ extension NotificationBridge {
             title = body["title"] as? String ?? ""
             self.body = body["body"] as? String ?? ""
             tag = body["tag"] as? String ?? ""
-            icon = (body["icon"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            icon = NotificationBridge.iconURL(body["icon"])
             silent = body["silent"] as? Bool ?? false
         }
     }

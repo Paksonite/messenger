@@ -5,13 +5,15 @@ import WebKit
 @MainActor
 final class WebViewHandler: NSObject {
     private var popups: [PopupWindowController] = []
+    /// Destination and source of each running download, for quarantining the file when it finishes.
+    private var downloads: [ObjectIdentifier: (file: URL, source: URL?)] = [:]
 
     private func popup(for webView: WKWebView) -> PopupWindowController? {
         popups.first { $0.webView === webView }
     }
 
     private func openExternally(_ url: URL) {
-        Log.web.info("opening externally: \(url.absoluteString, privacy: .public)")
+        Log.web.info("opening externally: \(url.absoluteString, privacy: .private)")
         NSWorkspace.shared.open(url)
     }
 }
@@ -35,6 +37,9 @@ extension WebViewHandler: WKNavigationDelegate {
             if let popup = popup(for: webView), webView.url == nil || webView.url?.absoluteString == "about:blank" {
                 popup.close()
             }
+            return .cancel
+        case .block:
+            Log.web.error("blocked top-level \(url.scheme ?? "", privacy: .public): navigation")
             return .cancel
         }
     }
@@ -75,7 +80,10 @@ extension WebViewHandler: WKUIDelegate {
             return nil
         }
 
-        Log.web.info("opening popup: \(navigationAction.request.url?.absoluteString ?? "", privacy: .public)")
+        if let url = navigationAction.request.url, NavigationPolicy.decide(url, isMainFrame: true) == .block {
+            return nil
+        }
+        Log.web.info("opening popup: \(navigationAction.request.url?.absoluteString ?? "", privacy: .private)")
         let popup = PopupWindowController(configuration: configuration, windowFeatures: windowFeatures, handler: self)
         popup.onClose = { [weak self, weak popup] in
             self?.popups.removeAll { $0 === popup }
@@ -97,10 +105,7 @@ extension WebViewHandler: WKUIDelegate {
         type: WKMediaCaptureType,
         decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
     ) {
-        let isInternal = NavigationPolicy.internalDomains.contains {
-            origin.host == $0 || origin.host.hasSuffix("." + $0)
-        }
-        decisionHandler(isInternal ? .grant : .deny)
+        decisionHandler(NavigationPolicy.isInternal(host: origin.host) ? .grant : .deny)
     }
 
     func webView(
@@ -125,9 +130,10 @@ extension WebViewHandler: WKUIDelegate {
         runJavaScriptAlertPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo
     ) async {
+        guard Self.canShowDialog(from: frame) else { return }
         let alert = NSAlert()
         alert.messageText = message
-        alert.runModal()
+        _ = await Self.present(alert, in: webView)
     }
 
     func webView(
@@ -135,11 +141,25 @@ extension WebViewHandler: WKUIDelegate {
         runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo
     ) async -> Bool {
+        guard Self.canShowDialog(from: frame) else { return false }
         let alert = NSAlert()
         alert.messageText = message
         alert.addButton(withTitle: String(localized: "OK"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
+        return await Self.present(alert, in: webView) == .alertFirstButtonReturn
+    }
+
+    /// Only Messenger's own page may show dialogs; an embedded frame could otherwise block the app.
+    private static func canShowDialog(from frame: WKFrameInfo) -> Bool {
+        frame.isMainFrame && NavigationPolicy.isInternal(host: frame.securityOrigin.host)
+    }
+
+    /// A sheet on the page's window, so other windows stay usable.
+    private static func present(_ alert: NSAlert, in webView: WKWebView) async -> NSApplication.ModalResponse {
+        if let window = webView.window {
+            return await alert.beginSheetModal(for: window)
+        }
+        return alert.runModal()
     }
 }
 
@@ -152,16 +172,26 @@ extension WebViewHandler: WKDownloadDelegate {
         suggestedFilename: String
     ) async -> URL? {
         let directory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-        let destination = Self.uniqueURL(in: directory, for: suggestedFilename)
-        Log.web.info("downloading to \(destination.path, privacy: .public)")
+        // Only the file name: a suggested name must not point outside the Downloads folder.
+        let filename = (suggestedFilename as NSString).lastPathComponent
+        let destination = Self.uniqueURL(in: directory, for: filename.isEmpty ? "download" : filename)
+        downloads[ObjectIdentifier(download)] = (destination, download.originalRequest?.url)
+        Log.web.info("downloading to \(destination.path, privacy: .private)")
         return destination
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        Log.web.info("download finished")
+        guard let (file, source) = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        do {
+            let wasQuarantined = try Quarantine.mark(file, downloadedFrom: source)
+            Log.web.info("download finished, quarantine \(wasQuarantined ? "set by WebKit" : "added", privacy: .public)")
+        } catch {
+            Log.web.error("could not quarantine download: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
+        downloads.removeValue(forKey: ObjectIdentifier(download))
         Log.web.error("download failed: \(error.localizedDescription, privacy: .public)")
     }
 

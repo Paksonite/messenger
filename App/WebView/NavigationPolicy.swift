@@ -5,6 +5,8 @@ enum NavigationPolicy {
     enum Decision: Equatable {
         case allow
         case openExternally(URL)
+        /// Not loaded anywhere, e.g. a top-level `data:` page, which could pose as a login form.
+        case block
     }
 
     static let startURL = URL(string: "https://www.messenger.com/")!
@@ -20,8 +22,14 @@ enum NavigationPolicy {
 
     static func decide(_ url: URL, isMainFrame: Bool) -> Decision {
         switch url.scheme?.lowercased() {
-        case nil, "about", "blob", "data":
+        case nil, "blob":
             return .allow
+        case "about":
+            // Popups start at about:blank; other about: pages have no use at the top level.
+            return !isMainFrame || ["about:blank", "about:srcdoc"].contains(url.absoluteString) ? .allow : .block
+        case "data":
+            // Browsers refuse top-level data: navigations for the same reason.
+            return isMainFrame ? .block : .allow
         case "http", "https":
             break
         default:
@@ -48,8 +56,17 @@ enum NavigationPolicy {
     }
 
     static func isInternal(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else { return false }
+        url.host.map(isInternal(host:)) ?? false
+    }
+
+    static func isInternal(host: String) -> Bool {
+        let host = host.lowercased()
         return internalDomains.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    /// Notification icons are fetched natively, so only Messenger's own HTTPS image hosts are allowed.
+    static func isAllowedIconURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "https" && isInternal(url)
     }
 
     /// Facebook wraps outgoing links as `l.facebook.com/l.php?u=<target>`.

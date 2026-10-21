@@ -27,6 +27,7 @@ cask "messenger" do
     "~/Library/Application Support/pl.paksonite.messenger",
     "~/Library/Caches/pl.paksonite.messenger",
     "~/Library/HTTPStorages/pl.paksonite.messenger",
+    "~/Library/HTTPStorages/pl.paksonite.messenger.binarycookies",
     "~/Library/Preferences/pl.paksonite.messenger.plist",
     "~/Library/Saved Application State/pl.paksonite.messenger.savedState",
     "~/Library/WebKit/pl.paksonite.messenger",
