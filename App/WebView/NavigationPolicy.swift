@@ -36,6 +36,17 @@ enum NavigationPolicy {
         return .openExternally(url)
     }
 
+    /// Conversation pages: /t/<id> and end-to-end encrypted /e2ee/t/<id>.
+    static func isConversation(_ url: URL) -> Bool {
+        isInternal(url) && (url.path.hasPrefix("/t/") || url.path.hasPrefix("/e2ee/t/"))
+    }
+
+    /// The page to open at launch: the last conversation if it is still a valid Messenger URL.
+    static func launchURL(lastConversation: String?) -> URL {
+        guard let lastConversation, let url = URL(string: lastConversation), isConversation(url) else { return startURL }
+        return url
+    }
+
     static func isInternal(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return internalDomains.contains { host == $0 || host.hasSuffix("." + $0) }

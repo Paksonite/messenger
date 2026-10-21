@@ -34,6 +34,8 @@ enum MainMenu {
 
         let viewMenu = submenu(in: menu, title: String(localized: "View"))
         viewMenu.addItem(withTitle: String(localized: "Reload"), action: #selector(WebViewController.reloadPage(_:)), keyEquivalent: "r")
+        viewMenu.addItem(withTitle: String(localized: "Back"), action: #selector(WebViewController.goBack(_:)), keyEquivalent: "[")
+        viewMenu.addItem(withTitle: String(localized: "Forward"), action: #selector(WebViewController.goForward(_:)), keyEquivalent: "]")
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: String(localized: "Actual Size"), action: #selector(WebViewController.resetZoom(_:)), keyEquivalent: "0")
         viewMenu.addItem(withTitle: String(localized: "Zoom In"), action: #selector(WebViewController.zoomIn(_:)), keyEquivalent: "=")
@@ -41,6 +43,22 @@ enum MainMenu {
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: String(localized: "Enter Full Screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
             .keyEquivalentModifierMask = [.command, .control]
+
+        let chatsMenu = submenu(in: menu, title: String(localized: "Chats"))
+        chatsMenu.addItem(withTitle: String(localized: "New Message"), action: #selector(WebViewController.newMessage(_:)), keyEquivalent: "n")
+        chatsMenu.addItem(withTitle: String(localized: "Search"), action: #selector(WebViewController.focusSearch(_:)), keyEquivalent: "f")
+        chatsMenu.addItem(.separator())
+        for index in 1...9 {
+            let item = chatsMenu.addItem(
+                withTitle: String(localized: "Chat \(index)"),
+                action: #selector(WebViewController.openChat(_:)),
+                keyEquivalent: String(index)
+            )
+            item.tag = index
+            // Only the first is listed; ⌘2…⌘9 work through their hidden items.
+            item.isHidden = index > 1
+            item.allowsKeyEquivalentWhenHidden = true
+        }
 
         let windowMenu = submenu(in: menu, title: String(localized: "Window"))
         windowMenu.addItem(withTitle: String(localized: "Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")

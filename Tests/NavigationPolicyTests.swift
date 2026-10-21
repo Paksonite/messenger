@@ -64,3 +64,18 @@ struct BadgeControllerTests {
         #expect(BadgeController.unreadCount(fromTitle: nil) == nil)
     }
 }
+
+struct LaunchURLTests {
+    @Test(arguments: [
+        "https://www.messenger.com/t/7420742507964770/",
+        "https://www.messenger.com/e2ee/t/123456/",
+    ])
+    func restoresLastConversation(_ saved: String) {
+        #expect(NavigationPolicy.launchURL(lastConversation: saved) == URL(string: saved)!)
+    }
+
+    @Test(arguments: [nil, "", "https://www.messenger.com/", "https://example.com/t/1", "not a url"])
+    func fallsBackToStartPage(_ saved: String?) {
+        #expect(NavigationPolicy.launchURL(lastConversation: saved) == NavigationPolicy.startURL)
+    }
+}

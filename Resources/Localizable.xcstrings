@@ -41,12 +41,42 @@
         }
       }
     },
+    "Back" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wstecz"
+          }
+        }
+      }
+    },
     "Cancel" : {
       "localizations" : {
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anuluj"
+          }
+        }
+      }
+    },
+    "Chat %lld" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa %lld"
+          }
+        }
+      }
+    },
+    "Chats" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy"
           }
         }
       }
@@ -161,6 +191,16 @@
         }
       }
     },
+    "Forward" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dalej"
+          }
+        }
+      }
+    },
     "General" : {
       "localizations" : {
         "pl" : {
@@ -207,6 +247,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minimalizuj"
+          }
+        }
+      }
+    },
+    "New Message" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowa wiadomość"
           }
         }
       }
@@ -307,6 +357,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Odśwież"
+          }
+        }
+      }
+    },
+    "Search" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szukaj"
           }
         }
       }
