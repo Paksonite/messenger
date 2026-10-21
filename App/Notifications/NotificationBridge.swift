@@ -1,0 +1,120 @@
+import AppKit
+import UserNotifications
+import WebKit
+
+/// Receives web notifications from `notification-shim.js` and shows them as native macOS notifications.
+@MainActor
+final class NotificationBridge: NSObject {
+    static let messageHandlerName = "messengerBridge"
+
+    weak var webView: WKWebView?
+    var onActivate: (() -> Void)?
+
+    private let center = UNUserNotificationCenter.current()
+
+    func requestAuthorization() {
+        Task {
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                Log.notifications.info("authorization granted: \(granted)")
+            } catch {
+                Log.notifications.error("authorization failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// Called when the user clicks a delivered notification.
+    func activate(notificationID id: String) {
+        onActivate?()
+        guard let literal = Self.jsStringLiteral(id) else { return }
+        webView?.evaluateJavaScript("window.__messengerBridge?.click(\(literal))") { result, error in
+            if let error {
+                Log.bridge.error("click dispatch failed: \(error.localizedDescription, privacy: .public)")
+            } else if (result as? Bool) != true {
+                Log.bridge.info("no live notification for click \(id, privacy: .public)")
+            }
+        }
+    }
+
+    private func show(_ payload: Payload) {
+        Log.notifications.info("notification from \(payload.source, privacy: .public): \(payload.title, privacy: .private)")
+        Task {
+            let content = UNMutableNotificationContent()
+            content.title = payload.title
+            content.body = payload.body
+            content.threadIdentifier = payload.tag.isEmpty ? payload.title : payload.tag
+            content.userInfo = ["id": payload.id]
+            if !payload.silent { content.sound = .default }
+            if let icon = payload.icon,
+               let file = await Self.downloadIcon(from: icon, id: payload.id),
+               let attachment = try? UNNotificationAttachment(identifier: payload.id, url: file) {
+                content.attachments = [attachment]
+            }
+
+            do {
+                try await center.add(UNNotificationRequest(identifier: payload.id, content: content, trigger: nil))
+            } catch {
+                Log.notifications.error("delivery failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func remove(id: String) {
+        center.removeDeliveredNotifications(withIdentifiers: [id])
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+    }
+
+    nonisolated private static func downloadIcon(from url: URL, id: String) async -> URL? {
+        let request = URLRequest(url: url, timeoutInterval: 3)
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        let ext = response.mimeType == "image/png" ? "png" : "jpg"
+        let file = FileManager.default.temporaryDirectory.appending(path: "notification-\(id).\(ext)")
+        return (try? data.write(to: file)) != nil ? file : nil
+    }
+
+    private static func jsStringLiteral(_ value: String) -> String? {
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
+
+extension NotificationBridge: WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        switch type {
+        case "notification":
+            if let payload = Payload(body) { show(payload) }
+        case "notification-close":
+            if let id = body["id"] as? String { remove(id: id) }
+        case "log":
+            Log.bridge.info("js: \(body["message"] as? String ?? "", privacy: .public)")
+        default:
+            Log.bridge.error("unknown message type: \(type, privacy: .public)")
+        }
+    }
+}
+
+extension NotificationBridge {
+    struct Payload {
+        let id: String
+        let source: String
+        let title: String
+        let body: String
+        let tag: String
+        let icon: URL?
+        let silent: Bool
+
+        init?(_ body: [String: Any]) {
+            guard let id = body["id"] as? String, !id.isEmpty else { return nil }
+            self.id = id
+            source = body["source"] as? String ?? "window"
+            title = body["title"] as? String ?? ""
+            self.body = body["body"] as? String ?? ""
+            tag = body["tag"] as? String ?? ""
+            icon = (body["icon"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            silent = body["silent"] as? Bool ?? false
+        }
+    }
+}
