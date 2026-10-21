@@ -6,13 +6,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 dmg="$1"
+# Checked up front: a ${VAR:?} error inside a command lets the EXIT trap below turn the exit status into 0.
+if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+  echo "error: HOMEBREW_TAP_TOKEN is not set" >&2
+  exit 1
+fi
 version="$(basename "$dmg" .dmg)"
 version="${version#Messenger-}"
 sha256="$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
 
 tap="$(mktemp -d)"
 trap 'rm -rf "$tap"' EXIT
-git clone --quiet --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN:?}@github.com/Paksonite/homebrew-tap.git" "$tap"
+git clone --quiet --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/Paksonite/homebrew-tap.git" "$tap"
 
 mkdir -p "$tap/Casks"
 sed -e "s/@VERSION@/$version/" -e "s/@SHA256@/$sha256/" packaging/messenger.rb >"$tap/Casks/messenger.rb"
