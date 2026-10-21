@@ -25,10 +25,9 @@ final class Updater: NSObject {
         content.body = "Click to install the update."
         content.userInfo = ["kind": Self.notificationKind]
         let request = UNNotificationRequest(identifier: Self.notificationKind, content: content, trigger: nil)
-        Task {
-            do {
-                try await UNUserNotificationCenter.current().add(request)
-            } catch {
+        // Completion handler form: UNUserNotificationCenter is not Sendable in older SDKs.
+        UNUserNotificationCenter.current().add(request) { @Sendable error in
+            if let error {
                 Log.app.error("update reminder failed: \(error.localizedDescription, privacy: .public)")
             }
         }
