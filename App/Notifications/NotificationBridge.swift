@@ -25,16 +25,16 @@ final class NotificationBridge: NSObject {
     }
 
     func requestAuthorization() {
+        // Completion handler form outside the Task: UNNotificationSettings is not Sendable in older SDKs.
+        center.getNotificationSettings { @Sendable settings in
+            Log.notifications.info(
+                "alert style: \(settings.alertStyle.rawValue), sound: \(settings.soundSetting.rawValue)"
+            )
+        }
         Task {
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
                 Log.notifications.info("authorization granted: \(granted)")
-                // Completion handler form: UNNotificationSettings is not Sendable in older SDKs.
-                center.getNotificationSettings { @Sendable settings in
-                    Log.notifications.info(
-                        "alert style: \(settings.alertStyle.rawValue), sound: \(settings.soundSetting.rawValue)"
-                    )
-                }
             } catch {
                 Log.notifications.error("authorization failed: \(error.localizedDescription, privacy: .public)")
             }
