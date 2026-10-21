@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 for script in Resources/Scripts/*.js; do
   node --check "$script"
 done
-node --test Tests/js
+node --test Tests/js/*.test.mjs
 
 xcodegen generate --quiet
 xcodebuild \
