@@ -8,7 +8,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 app=build/Messenger.app
-identity="Paksonite Messenger Code Signing"
 config_dir="$HOME/.config/paksonite-messenger"
 keychain="$PWD/build/signing.keychain-db"
 
@@ -27,15 +26,32 @@ if [[ -n "$p12" ]]; then
   keychain_password="$(openssl rand -hex 16)"
   rm -f "$keychain"
   security create-keychain -p "$keychain_password" "$keychain"
+  # Older macOS only finds the signing key when its keychain is in the user search list.
+  original_keychains=()
+  while IFS= read -r line; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    original_keychains+=("${line//\"/}")
+  done < <(security list-keychains -d user)
   cleanup() {
+    security list-keychains -d user -s "${original_keychains[@]}"
     security delete-keychain "$keychain" 2>/dev/null || true
     rm -f "$PWD/build/signing.p12"
   }
   trap cleanup EXIT
+  security list-keychains -d user -s "$keychain" "${original_keychains[@]}"
   security set-keychain-settings -lut 3600 "$keychain"
   security unlock-keychain -p "$keychain_password" "$keychain"
   security import "$p12" -k "$keychain" -P "$password" -T /usr/bin/codesign >/dev/null
   security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
+
+  # Sign by SHA-1 fingerprint: codesign does not match untrusted (self-signed) identities by name everywhere.
+  identity="$(security find-identity -p codesigning "$keychain" | awk '/^ *1\) / { print $2; exit }')"
+  if [[ -z "$identity" ]]; then
+    security find-identity -p codesigning "$keychain" >&2
+    echo "error: no code signing identity in $p12" >&2
+    exit 1
+  fi
+  echo "Signing with certificate $identity"
   sign_args+=(--sign "$identity" --keychain "$keychain")
 else
   echo "warning: no signing certificate found, signing ad-hoc" >&2

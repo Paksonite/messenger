@@ -51,6 +51,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DMG: ${{ steps.package.outputs.dmg }}
         run: |
+          # A release created by hand in the GitHub UI for this tag gets the files attached.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$DMG" build/appcast.xml --clobber
+            exit 0
+          fi
           prerelease=()
           [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
           gh release create "$GITHUB_REF_NAME" "$DMG" build/appcast.xml \
