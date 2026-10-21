@@ -16,6 +16,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.title = "Messenger"
+        window.backgroundColor = .windowBackgroundColor
         window.minSize = NSSize(width: 480, height: 400)
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false

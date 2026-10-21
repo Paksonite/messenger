@@ -127,7 +127,7 @@
 
   // Conversation rows link to /t/<thread id> and show an avatar plus at least a name and a preview line;
   // this skips headers such as "Chats · 3 unread" that also link to /t/.
-  const latestThread = () =>
+  const conversationRows = () =>
     threadLinks()
       .map((link) => ({
         link,
@@ -137,13 +137,46 @@
         image: link.querySelector("img, image"),
       }))
       .filter((row) => row.threadId && row.lines.length >= 2 && row.image)
-      .sort((a, b) => a.top - b.top)
-      .map((row) => ({
-        href: row.link.href,
-        threadId: row.threadId,
-        lines: rowLines(row.link),
-        icon: absolute(row.image.currentSrc || row.image.src || row.image.getAttribute("xlink:href") || row.image.getAttribute("href")),
-      }))[0] ?? null;
+      .sort((a, b) => a.top - b.top);
+
+  const latestThread = () =>
+    conversationRows().map((row) => ({
+      href: row.link.href,
+      threadId: row.threadId,
+      lines: rowLines(row.link),
+      icon: absolute(row.image.currentSrc || row.image.src || row.image.getAttribute("xlink:href") || row.image.getAttribute("href")),
+    }))[0] ?? null;
+
+  const isVisible = (element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  // Keyboard shortcut actions called from the native menu; each returns a short result for the log.
+  const shortcuts = {
+    openChat(index) {
+      const row = conversationRows()[index - 1];
+      if (!row) return `no chat ${index}`;
+      row.link.click();
+      return `opened chat ${index}`;
+    },
+    newMessage() {
+      const link = [...document.querySelectorAll('a[href*="/new"]')].find(isVisible);
+      if (link) {
+        link.click();
+        return "clicked new message link";
+      }
+      location.assign("/new/");
+      return "navigated to /new/";
+    },
+    focusSearch() {
+      const input = [...document.querySelectorAll('input[type="search"], input[role="combobox"]')].find(isVisible);
+      if (!input) return "no search field";
+      input.focus();
+      input.select?.();
+      return "focused search";
+    },
+  };
 
   const openThread = (href) => {
     const path = new URL(href, location.href).pathname;
@@ -252,6 +285,7 @@
         notification.__fire("click");
         return true;
       },
+      ...shortcuts,
     }),
   });
 

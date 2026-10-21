@@ -3,10 +3,15 @@ import WebKit
 
 @MainActor
 final class WebViewController: NSViewController {
+    private static let lastConversationKey = "LastConversationURL"
+
     let webView: WKWebView
     private let handler = WebViewHandler()
     private let badge = BadgeController()
+    private let spinner = NSProgressIndicator()
     private var titleObservation: NSKeyValueObservation?
+    private var urlObservation: NSKeyValueObservation?
+    private var loadingObservation: NSKeyValueObservation?
 
     init(bridge: NotificationBridge) {
         let configuration = WebViewConfigurationFactory.make(bridge: bridge)
@@ -18,6 +23,8 @@ final class WebViewController: NSViewController {
         webView.allowsMagnification = true
         webView.allowsBackForwardNavigationGestures = false
         webView.isInspectable = Self.isInspectorEnabled
+        // Show the window background (dark in dark mode) instead of a white flash until the page paints.
+        webView.setValue(false, forKey: "drawsBackground")
         bridge.webView = webView
         badge.onIncrease = { [weak bridge] count in bridge?.unreadCountIncreased(to: count) }
 
@@ -30,6 +37,22 @@ final class WebViewController: NSViewController {
                 self?.badge.update(title: webView.title)
             }
         }
+        // Also fires for Messenger's in-page navigation (pushState), so the last chat is always current.
+        urlObservation = webView.observe(\.url, options: [.new]) { webView, _ in
+            MainActor.assumeIsolated {
+                if let url = webView.url, NavigationPolicy.isConversation(url) {
+                    UserDefaults.standard.set(url.absoluteString, forKey: Self.lastConversationKey)
+                }
+            }
+        }
+        loadingObservation = webView.observe(\.isLoading, options: [.new]) { [weak self] webView, _ in
+            MainActor.assumeIsolated {
+                guard let self, !webView.isLoading else { return }
+                self.spinner.stopAnimation(nil)
+                self.spinner.isHidden = true
+                self.loadingObservation = nil
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -38,11 +61,27 @@ final class WebViewController: NSViewController {
     }
 
     override func loadView() {
-        view = webView
+        let container = NSView(frame: webView.frame)
+        webView.autoresizingMask = [.width, .height]
+        container.addSubview(webView)
+
+        spinner.style = .spinning
+        spinner.controlSize = .regular
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        spinner.startAnimation(nil)
+
+        view = container
     }
 
+    /// Opens the last conversation, or Messenger's start page.
     func load() {
-        webView.load(URLRequest(url: NavigationPolicy.startURL))
+        let saved = UserDefaults.standard.string(forKey: Self.lastConversationKey)
+        webView.load(URLRequest(url: NavigationPolicy.launchURL(lastConversation: saved)))
     }
 
     /// Always on in Debug; in Release enable with
@@ -53,6 +92,17 @@ final class WebViewController: NSViewController {
         #else
         return UserDefaults.standard.bool(forKey: "WebInspectorEnabled")
         #endif
+    }
+
+    private func runShortcut(_ call: String) {
+        view.window?.makeFirstResponder(webView)
+        webView.evaluateJavaScript("window.__messengerBridge?.\(call)") { result, error in
+            if let error {
+                Log.web.error("shortcut \(call, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            } else {
+                Log.web.info("shortcut \(call, privacy: .public): \(result as? String ?? "no result", privacy: .public)")
+            }
+        }
     }
 
     // MARK: - Menu actions
@@ -71,5 +121,36 @@ final class WebViewController: NSViewController {
 
     @objc func zoomOut(_ sender: Any?) {
         webView.pageZoom = max(webView.pageZoom - 0.1, 0.5)
+    }
+
+    @objc func goBack(_ sender: Any?) {
+        webView.goBack()
+    }
+
+    @objc func goForward(_ sender: Any?) {
+        webView.goForward()
+    }
+
+    /// ⌘1…⌘9: the menu item's tag is the position in the chat list.
+    @objc func openChat(_ sender: NSMenuItem) {
+        runShortcut("openChat(\(sender.tag))")
+    }
+
+    @objc func newMessage(_ sender: Any?) {
+        runShortcut("newMessage()")
+    }
+
+    @objc func focusSearch(_ sender: Any?) {
+        runShortcut("focusSearch()")
+    }
+}
+
+extension WebViewController: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(goBack(_:)): webView.canGoBack
+        case #selector(goForward(_:)): webView.canGoForward
+        default: true
+        }
     }
 }
