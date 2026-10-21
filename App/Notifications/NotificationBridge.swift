@@ -24,17 +24,20 @@ final class NotificationBridge: NSObject {
         NSApp.isActive && webView?.window?.isKeyWindow == true
     }
 
+    // UNUserNotificationCenter calls use completion handlers from synchronous methods: in older SDKs the
+    // center and its settings are not Sendable, so their async variants don't compile from the main actor.
     func requestAuthorization() {
-        Task {
-            do {
-                let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-                let settings = await center.notificationSettings()
-                Log.notifications.info(
-                    "authorization granted: \(granted), alert style: \(settings.alertStyle.rawValue), sound: \(settings.soundSetting.rawValue)"
-                )
-            } catch {
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { @Sendable granted, error in
+            if let error {
                 Log.notifications.error("authorization failed: \(error.localizedDescription, privacy: .public)")
+            } else {
+                Log.notifications.info("authorization granted: \(granted)")
             }
+        }
+        center.getNotificationSettings { @Sendable settings in
+            Log.notifications.info(
+                "alert style: \(settings.alertStyle.rawValue), sound: \(settings.soundSetting.rawValue)"
+            )
         }
     }
 
@@ -121,10 +124,13 @@ final class NotificationBridge: NSObject {
                let attachment = try? UNNotificationAttachment(identifier: payload.id, url: file) {
                 content.attachments = [attachment]
             }
+            deliver(UNNotificationRequest(identifier: payload.id, content: content, trigger: nil))
+        }
+    }
 
-            do {
-                try await center.add(UNNotificationRequest(identifier: payload.id, content: content, trigger: nil))
-            } catch {
+    private func deliver(_ request: UNNotificationRequest) {
+        center.add(request) { @Sendable error in
+            if let error {
                 Log.notifications.error("delivery failed: \(error.localizedDescription, privacy: .public)")
             }
         }

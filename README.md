@@ -4,6 +4,14 @@ Native Facebook Messenger for macOS: a lightweight AppKit + `WKWebView` wrapper 
 
 Not affiliated with or endorsed by Meta.
 
+## Install
+
+```bash
+brew install --cask paksonite/tap/messenger
+```
+
+Or download the DMG from [Releases](https://github.com/Paksonite/messenger/releases). The app is not notarized, so a manually downloaded copy needs a one-time **Open Anyway** in System Settings → Privacy & Security. The app updates itself (Messenger → Check for Updates…).
+
 ## Requirements
 
 - macOS 15 Sequoia or later (Apple Silicon and Intel)
@@ -29,4 +37,6 @@ The app icon is rendered from `design/AppIcon.svg` with `scripts/make-icon.sh` (
 | `Resources/Assets.xcassets` | App icon |
 | `Config/` | Info.plist and entitlements |
 | `Tests/` | Unit tests (Swift Testing) |
-| `docs/` | Notes, including the phase 0 spike checklist |
+| `packaging/` | Homebrew cask template |
+| `scripts/` | Build, test, sign, package and release scripts |
+| `docs/` | [Releasing](docs/releasing.md), phase 0 spike checklist |
