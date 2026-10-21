@@ -89,16 +89,18 @@ extension WebViewHandler: WKUIDelegate {
         popup(for: webView)?.close()
     }
 
+    // Completion handler form: its async name differs between SDK versions.
     func webView(
         _ webView: WKWebView,
-        decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
-        initiatedBy frame: WKFrameInfo,
-        type: WKMediaCaptureType
-    ) async -> WKPermissionDecision {
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
+    ) {
         let isInternal = NavigationPolicy.internalDomains.contains {
             origin.host == $0 || origin.host.hasSuffix("." + $0)
         }
-        return isInternal ? .grant : .deny
+        decisionHandler(isInternal ? .grant : .deny)
     }
 
     func webView(

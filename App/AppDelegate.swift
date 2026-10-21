@@ -5,6 +5,7 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notificationBridge = NotificationBridge()
     private var mainWindowController: MainWindowController?
+    private var updater: Updater?
 
     private var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -22,7 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        NSApp.mainMenu = MainMenu.make(target: self)
+        let updater = Updater()
+        self.updater = updater
+        NSApp.mainMenu = MainMenu.make(target: self, updater: updater)
 
         UNUserNotificationCenter.current().delegate = self
         notificationBridge.requestAuthorization()
@@ -74,9 +77,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let id = response.notification.request.content.userInfo["id"] as? String
-        else { return }
-        await MainActor.run { self.notificationBridge.activate(notificationID: id) }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let userInfo = response.notification.request.content.userInfo
+        if userInfo["kind"] as? String == Updater.notificationKind {
+            await MainActor.run { self.updater?.checkForUpdates(nil) }
+        } else if let id = userInfo["id"] as? String {
+            await MainActor.run { self.notificationBridge.activate(notificationID: id) }
+        }
     }
 }

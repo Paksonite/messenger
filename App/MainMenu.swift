@@ -2,11 +2,13 @@ import AppKit
 
 enum MainMenu {
     @MainActor
-    static func make(target: AppDelegate) -> NSMenu {
+    static func make(target: AppDelegate, updater: Updater) -> NSMenu {
         let menu = NSMenu()
 
         let appMenu = submenu(in: menu, title: "Messenger")
         appMenu.addItem(withTitle: "About Messenger", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
+            .target = updater
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Messenger", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")

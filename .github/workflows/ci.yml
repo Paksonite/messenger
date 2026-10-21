@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Test
+        run: scripts/test.sh
+
+      - name: Build
+        run: scripts/build.sh
+
+      # Ad-hoc signing: certificates are only available to release builds.
+      - name: Sign and package
+        run: |
+          scripts/sign.sh
+          scripts/package.sh
