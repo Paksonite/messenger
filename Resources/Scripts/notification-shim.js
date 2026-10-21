@@ -107,16 +107,25 @@
       return rect.width > 0 && rect.height > 0 && rect.left < window.innerWidth / 2;
     });
 
-  const latestThread = () => {
-    const link = threadLinks().sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
-    if (!link) return null;
-    return {
-      href: link.href,
-      threadId: link.getAttribute("href").match(/\/t\/([^/?#]+)/)?.[1] ?? "",
-      lines: link.innerText.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 8),
-      icon: absolute(link.querySelector("img")?.currentSrc || link.querySelector("img")?.src),
-    };
-  };
+  // Conversation rows link to /t/<thread id> and show an avatar plus at least a name and a preview line;
+  // this skips headers such as "Chats · 3 unread" that also link to /t/.
+  const latestThread = () =>
+    threadLinks()
+      .map((link) => ({
+        link,
+        top: link.getBoundingClientRect().top,
+        threadId: link.getAttribute("href").match(/\/t\/([^/?#]+)/)?.[1] ?? "",
+        lines: link.innerText.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 8),
+        image: link.querySelector("img, image"),
+      }))
+      .filter((row) => row.threadId && row.lines.length >= 2 && row.image)
+      .sort((a, b) => a.top - b.top)
+      .map((row) => ({
+        href: row.link.href,
+        threadId: row.threadId,
+        lines: row.lines,
+        icon: absolute(row.image.currentSrc || row.image.src || row.image.getAttribute("xlink:href") || row.image.getAttribute("href")),
+      }))[0] ?? null;
 
   const openThread = (href) => {
     const path = new URL(href, location.href).pathname;

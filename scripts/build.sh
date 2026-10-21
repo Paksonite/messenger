@@ -17,6 +17,7 @@ xcodebuild \
   -quiet \
   build
 
+# Move rather than copy so only one Messenger.app with this bundle ID stays registered with Launch Services.
 rm -rf build/Messenger.app
-cp -R "build/DerivedData/Build/Products/$configuration/Messenger.app" build/
+mv "build/DerivedData/Build/Products/$configuration/Messenger.app" build/
 echo "Built build/Messenger.app ($configuration)"

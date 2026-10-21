@@ -13,6 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !isRunningTests else { return }
 
+        // Two instances would both play sounds and post every notification twice.
+        if let other = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
+            Log.app.info("another instance is running (pid \(other.processIdentifier)), activating it")
+            other.activate()
+            NSApp.terminate(nil)
+            return
+        }
+
         NSApp.mainMenu = MainMenu.make(target: self)
 
         UNUserNotificationCenter.current().delegate = self
