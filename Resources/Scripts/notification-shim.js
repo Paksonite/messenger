@@ -98,6 +98,61 @@
     },
   });
 
+  // Incoming messages. Without Web Push, Messenger never calls the Notification API in WKWebView,
+  // but it plays a sound for every incoming message: use that as the trigger and read the newest
+  // row of the chat list (sender, text, avatar).
+  const threadLinks = () =>
+    [...document.querySelectorAll('a[href*="/t/"]')].filter((link) => {
+      const rect = link.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && rect.left < window.innerWidth / 2;
+    });
+
+  const latestThread = () => {
+    const link = threadLinks().sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+    if (!link) return null;
+    return {
+      href: link.href,
+      threadId: link.getAttribute("href").match(/\/t\/([^/?#]+)/)?.[1] ?? "",
+      lines: link.innerText.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 8),
+      icon: absolute(link.querySelector("img")?.currentSrc || link.querySelector("img")?.src),
+    };
+  };
+
+  const openThread = (href) => {
+    const path = new URL(href, location.href).pathname;
+    const link = [...document.querySelectorAll('a[href*="/t/"]')].find((a) => new URL(a.href).pathname === path);
+    if (link) link.click();
+    else location.assign(href);
+  };
+
+  let messageTimer = null;
+  const onMessageSound = () => {
+    clearTimeout(messageTimer);
+    // Give the chat list a moment to move the new message to the top.
+    messageTimer = setTimeout(() => {
+      const thread = latestThread();
+      if (!thread) {
+        log("message sound, but no chat list rows found");
+        return;
+      }
+      const id = nextId();
+      live.set(id, {
+        __fire(name) {
+          if (name === "click") openThread(thread.href);
+        },
+      });
+      post({ type: "message", id, threadId: thread.threadId, lines: thread.lines, icon: thread.icon });
+    }, 400);
+  };
+
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function (...args) {
+    const source = this.currentSrc || this.src || "";
+    if (diagnostics) log(`media.play ${source.slice(0, 160) || "(no src)"}`);
+    if (frame === "main" && this instanceof HTMLAudioElement && source.includes("fbcdn.net")) onMessageSound();
+    return play.apply(this, args);
+  };
+
   if (diagnostics) {
     log(
       `diagnostics ${frame}: serviceWorker=${"serviceWorker" in navigator} PushManager=${"PushManager" in window} ` +
@@ -107,11 +162,6 @@
     window.addEventListener("focus", () => log("window focus"));
     window.addEventListener("blur", () => log("window blur"));
 
-    const play = HTMLMediaElement.prototype.play;
-    HTMLMediaElement.prototype.play = function (...args) {
-      log(`media.play ${(this.currentSrc || this.src || "(no src)").slice(0, 160)}`);
-      return play.apply(this, args);
-    };
     const start = window.AudioBufferSourceNode?.prototype.start;
     if (start) {
       AudioBufferSourceNode.prototype.start = function (...args) {

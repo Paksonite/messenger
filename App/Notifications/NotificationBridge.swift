@@ -17,6 +17,8 @@ final class NotificationBridge: NSObject {
     private var lastWebNotification = Date.distantPast
     /// Latest title Messenger flashed while something is unread, e.g. "Jane sent a message".
     private var attentionTitle: (text: String, date: Date)?
+    /// Thread and text of the last message notification, to skip duplicates.
+    private var lastMessage: (key: String, date: Date)?
 
     private var isWindowFocused: Bool {
         NSApp.isActive && webView?.window?.isKeyWindow == true
@@ -62,6 +64,33 @@ final class NotificationBridge: NSObject {
                 silent: true
             ))
         }
+    }
+
+    /// An incoming message detected by the shim from Messenger's message sound and the chat list.
+    private func showMessage(id: String, threadID: String, lines: [String], icon: URL?) {
+        if Log.isVerbose {
+            Log.bridge.info("message row \(threadID, privacy: .public): \(lines, privacy: .public)")
+        }
+        guard !isWindowFocused else { return }
+        guard let preview = MessagePreview(lines: lines) else {
+            Log.notifications.info("message row skipped (own message or unreadable)")
+            return
+        }
+
+        let key = "\(threadID)|\(preview.text)"
+        if let lastMessage, lastMessage.key == key, Date().timeIntervalSince(lastMessage.date) < 10 { return }
+        lastMessage = (key, Date())
+
+        // Messenger already plays its own sound for the message.
+        show(Payload(
+            id: id,
+            source: "message",
+            title: preview.sender,
+            body: preview.text.isEmpty ? "New message" : preview.text,
+            tag: threadID,
+            icon: icon,
+            silent: true
+        ))
     }
 
     /// Called when the user clicks a delivered notification.
@@ -128,6 +157,14 @@ extension NotificationBridge: WKScriptMessageHandler {
         switch type {
         case "notification":
             if let payload = Payload(body) { show(payload) }
+        case "message":
+            guard let id = body["id"] as? String, let lines = body["lines"] as? [String] else { return }
+            showMessage(
+                id: id,
+                threadID: body["threadId"] as? String ?? "",
+                lines: lines,
+                icon: (body["icon"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            )
         case "notification-close":
             if let id = body["id"] as? String { remove(id: id) }
         case "log":
