@@ -1,6 +1,12 @@
 import AppKit
 import WebKit
 
+/// Delays when quitting: time for Messenger to react to the hidden page, then to send what it queued on unload.
+private enum QuitTiming {
+    static let afterHiding: Duration = .milliseconds(400)
+    static let afterUnloading: Duration = .milliseconds(800)
+}
+
 @MainActor
 final class WebViewController: NSViewController {
     private static let lastConversationKey = "LastConversationURL"
@@ -89,9 +95,9 @@ final class WebViewController: NSViewController {
     /// without them, a chat read just before ⌘Q came back unread on the next launch.
     func unloadPage() async {
         view.window?.orderOut(nil)
-        try? await Task.sleep(for: .milliseconds(400))
+        try? await Task.sleep(for: QuitTiming.afterHiding)
         webView.load(URLRequest(url: URL(string: "about:blank")!))
-        try? await Task.sleep(for: .milliseconds(800))
+        try? await Task.sleep(for: QuitTiming.afterUnloading)
     }
 
     /// Always on in Debug; in Release enable with

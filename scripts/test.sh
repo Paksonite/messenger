@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Runs the unit tests.
+# Runs the unit tests: page scripts with node, the app with xcodebuild.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+for script in Resources/Scripts/*.js; do
+  node --check "$script"
+done
+node --test Tests/js/*.test.mjs
 
 xcodegen generate --quiet
 xcodebuild \

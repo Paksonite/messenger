@@ -2,19 +2,26 @@ import AppKit
 import UserNotifications
 import WebKit
 
-/// Receives web notifications from `notification-shim.js` and shows them as native macOS notifications.
+/// Receives messages from the page scripts and shows them as native macOS notifications.
 @MainActor
 final class NotificationBridge: NSObject {
     static let messageHandlerName = "messengerBridge"
+
+    private enum Timing {
+        /// After the unread count goes up, how long to wait for a message notification before posting a fallback.
+        static let fallbackDelay: Duration = .seconds(2)
+        /// A message or attention title within this window counts as covering an unread count increase.
+        static let freshness: TimeInterval = 4
+        /// The same text in the same chat within this window is a duplicate.
+        static let duplicateWindow: TimeInterval = 10
+        static let iconTimeout: TimeInterval = 3
+    }
 
     weak var webView: WKWebView?
     var onActivate: (() -> Void)?
 
     private let center = UNUserNotificationCenter.current()
-
-    /// How long to wait for a web notification after the unread count goes up before posting a fallback.
-    private static let fallbackDelay: Duration = .seconds(2)
-    private var lastWebNotification = Date.distantPast
+    private var lastPageNotification = Date.distantPast
     /// Latest title Messenger flashed while something is unread, e.g. "Jane sent a message".
     private var attentionTitle: (text: String, date: Date)?
     /// Thread and text of the last message notification, to skip duplicates.
@@ -46,20 +53,18 @@ final class NotificationBridge: NSObject {
         attentionTitle = (title, Date())
     }
 
-    /// Fallback for when the page raises the unread count without calling the Notification API.
+    /// Fallback for when the unread count goes up but the page scripts reported no message.
     func unreadCountIncreased(to count: Int) {
         Task {
-            try? await Task.sleep(for: Self.fallbackDelay)
-            let freshness = Double(Self.fallbackDelay.components.seconds) * 2
-            guard Date().timeIntervalSince(lastWebNotification) > freshness else { return }
-            guard !isWindowFocused else { return }
+            try? await Task.sleep(for: Timing.fallbackDelay)
+            guard Date().timeIntervalSince(lastPageNotification) > Timing.freshness, !isWindowFocused else { return }
 
-            let recentTitle = attentionTitle.flatMap { Date().timeIntervalSince($0.date) < freshness ? $0.text : nil }
-            Log.notifications.info("no web notification for unread count \(count), posting fallback")
+            let recentTitle = attentionTitle.flatMap { Date().timeIntervalSince($0.date) < Timing.freshness ? $0.text : nil }
+            Log.notifications.info("no message reported for unread count \(count), posting fallback")
             // Messenger plays its own sound for new messages, so the fallback stays silent.
             show(Payload(
                 id: "fallback-\(UUID().uuidString)",
-                source: "fallback",
+                source: .fallback,
                 title: "Messenger",
                 body: recentTitle ?? (count == 1 ? String(localized: "New message") : String(localized: "\(count) unread chats")),
                 tag: "fallback",
@@ -69,27 +74,19 @@ final class NotificationBridge: NSObject {
         }
     }
 
-    /// An incoming message detected by the shim from Messenger's message sound and the chat list.
-    private func showMessage(id: String, threadID: String, lines: [String], icon: URL?) {
-        if Log.isVerbose {
-            Log.bridge.info("message row \(threadID, privacy: .public): \(lines, privacy: .public)")
-        }
+    private func showMessage(id: String, threadID: String, sender: String, text: String, icon: URL?) {
         guard !isWindowFocused else { return }
-        guard let preview = MessagePreview(lines: lines) else {
-            Log.notifications.info("message row skipped (own message or unreadable)")
-            return
-        }
 
-        let key = "\(threadID)|\(preview.text)"
-        if let lastMessage, lastMessage.key == key, Date().timeIntervalSince(lastMessage.date) < 10 { return }
+        let key = "\(threadID)|\(text)"
+        if let lastMessage, lastMessage.key == key, Date().timeIntervalSince(lastMessage.date) < Timing.duplicateWindow { return }
         lastMessage = (key, Date())
 
         // Messenger already plays its own sound for the message.
         show(Payload(
             id: id,
-            source: "message",
-            title: preview.sender,
-            body: Preferences.showMessagePreview && !preview.text.isEmpty ? preview.text : String(localized: "New message"),
+            source: .message,
+            title: sender,
+            body: Preferences.showMessagePreview && !text.isEmpty ? text : String(localized: "New message"),
             tag: threadID,
             icon: icon,
             silent: true
@@ -110,8 +107,8 @@ final class NotificationBridge: NSObject {
     }
 
     private func show(_ payload: Payload) {
-        Log.notifications.info("notification from \(payload.source, privacy: .public): \(payload.title, privacy: .private)")
-        if payload.source != "fallback" { lastWebNotification = Date() }
+        Log.notifications.info("notification from \(payload.source.rawValue, privacy: .public): \(payload.title, privacy: .private)")
+        if payload.source != .fallback { lastPageNotification = Date() }
         Task {
             let content = UNMutableNotificationContent()
             content.title = payload.title
@@ -142,7 +139,7 @@ final class NotificationBridge: NSObject {
     }
 
     nonisolated private static func downloadIcon(from url: URL, id: String) async -> URL? {
-        let request = URLRequest(url: url, timeoutInterval: 3)
+        let request = URLRequest(url: url, timeoutInterval: Timing.iconTimeout)
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
@@ -151,6 +148,7 @@ final class NotificationBridge: NSObject {
         return (try? data.write(to: file)) != nil ? file : nil
     }
 
+    /// Icons are fetched natively, so only Messenger's own HTTPS image hosts are accepted.
     nonisolated static func iconURL(_ value: Any?) -> URL? {
         guard let string = value as? String, let url = URL(string: string), NavigationPolicy.isAllowedIconURL(url) else { return nil }
         return url
@@ -174,57 +172,36 @@ extension NotificationBridge: WKScriptMessageHandler {
             Log.bridge.error("ignored bridge message from \(message.frameInfo.securityOrigin.host, privacy: .private)")
             return
         }
-        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-        switch type {
-        case "notification":
-            if let payload = Payload(body) { show(payload) }
-        case "message":
-            guard let id = body["id"] as? String, let lines = body["lines"] as? [String] else { return }
-            showMessage(
-                id: id,
-                threadID: body["threadId"] as? String ?? "",
-                lines: lines,
-                icon: Self.iconURL(body["icon"])
-            )
-        case "notification-close":
-            if let id = body["id"] as? String { remove(id: id) }
-        case "log":
-            Log.bridge.info("js: \(body["message"] as? String ?? "", privacy: .public)")
-        default:
-            Log.bridge.error("unknown message type: \(type, privacy: .public)")
+        switch PageMessage(message.body) {
+        case .webNotification(let payload):
+            show(payload)
+        case let .incomingMessage(id, threadID, sender, text, icon):
+            showMessage(id: id, threadID: threadID, sender: sender, text: text, icon: icon)
+        case .notificationClosed(let id):
+            remove(id: id)
+        case .log(let text):
+            Log.bridge.info("js: \(text, privacy: .public)")
+        case nil:
+            Log.bridge.error("unreadable bridge message")
         }
     }
 }
 
 extension NotificationBridge {
-    struct Payload {
+    struct Payload: Equatable {
+        enum Source: String {
+            case webNotification = "window"
+            case serviceWorker = "service-worker"
+            case message
+            case fallback
+        }
+
         let id: String
-        let source: String
+        let source: Source
         let title: String
         let body: String
         let tag: String
         let icon: URL?
         let silent: Bool
-
-        init(id: String, source: String, title: String, body: String, tag: String, icon: URL?, silent: Bool) {
-            self.id = id
-            self.source = source
-            self.title = title
-            self.body = body
-            self.tag = tag
-            self.icon = icon
-            self.silent = silent
-        }
-
-        init?(_ body: [String: Any]) {
-            guard let id = body["id"] as? String, !id.isEmpty else { return nil }
-            self.id = id
-            source = body["source"] as? String ?? "window"
-            title = body["title"] as? String ?? ""
-            self.body = body["body"] as? String ?? ""
-            tag = body["tag"] as? String ?? ""
-            icon = NotificationBridge.iconURL(body["icon"])
-            silent = body["silent"] as? Bool ?? false
-        }
     }
 }

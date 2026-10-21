@@ -15,7 +15,7 @@ Watch the app's logs in a second terminal:
 /usr/bin/log stream --level debug --style compact --predicate 'subsystem == "pl.paksonite.messenger"'
 ```
 
-The `js:` lines come from `Resources/Scripts/notification-shim.js` and show which notification APIs Messenger calls.
+The `js:` lines come from the page scripts in `Resources/Scripts/` (originally a single `notification-shim.js`) and show which notification APIs Messenger calls.
 
 ## Checklist
 
@@ -27,12 +27,12 @@ The `js:` lines come from `Resources/Scripts/notification-shim.js` and show whic
 | 4 | Session survives a restart | ⌘Q, relaunch | ✅ |
 | 5 | Notification API used by Messenger | Look for `Notification.requestPermission`, `permissions.query` or `ServiceWorkerRegistration.showNotification` in the log | ⚠️ None: no Web Push in WKWebView (`PushManager` missing), only `permissions.query`. See findings |
 | 6 | Native notification shows while the window is hidden | ⌘W, send yourself a message from another device | ✅ ~0.5 s after the message, sender + text + avatar |
-| 7 | Clicking the notification opens the right chat | Click the banner | |
+| 7 | Clicking the notification opens the right chat | Click the banner | ✅ Opens the conversation |
 | 8 | Notifications keep arriving after 10+ minutes hidden | ⌘W, wait, send a message | |
 | 9 | Dock badge shows the unread count | Leave messages unread | ✅ |
-| 10 | Links open in the default browser | Click a link in a chat | |
+| 10 | Links open in the default browser | Click a link in a chat | ✅ |
 | 11 | Audio/video call works (popup window, camera, mic) | Start a call | |
-| 12 | File upload and download | Send and save an attachment | |
+| 12 | File upload and download | Send and save an attachment | ✅ Sending works (after the SharedWorker fix in 0.3.3) |
 | 13 | Memory vs. the old app and Safari | Activity Monitor: Messenger + its WebContent process | |
 
 ## Findings (2026-10-21)

@@ -47,6 +47,8 @@ targets:
     platform: macOS
     sources:
       - path: Tests
+        excludes:
+          - "js/**"
     dependencies:
       - target: Messenger
     settings:
