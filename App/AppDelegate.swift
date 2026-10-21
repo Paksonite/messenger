@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private var updater: Updater?
     private var settingsWindowController: SettingsWindowController?
+    private var isFlushingBeforeQuit = false
 
     private var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -38,6 +39,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.webViewController.load()
         NSApp.activate()
+    }
+
+    /// Lets the page send what it still has queued (e.g. read receipts) before the web view goes away.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let controller = mainWindowController, !isFlushingBeforeQuit else { return .terminateNow }
+        isFlushingBeforeQuit = true
+        Task {
+            await controller.webViewController.unloadPage()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

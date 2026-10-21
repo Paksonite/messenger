@@ -84,6 +84,16 @@ final class WebViewController: NSViewController {
         webView.load(URLRequest(url: NavigationPolicy.launchURL(lastConversation: saved)))
     }
 
+    /// Hides the window, then unloads the page, giving Messenger the `visibilitychange` and `pagehide`
+    /// events a closing browser tab gets. Messenger sends queued work such as read receipts on those;
+    /// without them, a chat read just before ⌘Q came back unread on the next launch.
+    func unloadPage() async {
+        view.window?.orderOut(nil)
+        try? await Task.sleep(for: .milliseconds(400))
+        webView.load(URLRequest(url: URL(string: "about:blank")!))
+        try? await Task.sleep(for: .milliseconds(800))
+    }
+
     /// Always on in Debug; in Release enable with
     /// `defaults write pl.paksonite.messenger WebInspectorEnabled -bool true`.
     private static var isInspectorEnabled: Bool {
