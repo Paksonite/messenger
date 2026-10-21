@@ -61,7 +61,7 @@ final class NotificationBridge: NSObject {
                 id: "fallback-\(UUID().uuidString)",
                 source: "fallback",
                 title: "Messenger",
-                body: recentTitle ?? (count == 1 ? "New message" : "\(count) unread chats"),
+                body: recentTitle ?? (count == 1 ? String(localized: "New message") : String(localized: "\(count) unread chats")),
                 tag: "fallback",
                 icon: nil,
                 silent: true
@@ -89,7 +89,7 @@ final class NotificationBridge: NSObject {
             id: id,
             source: "message",
             title: preview.sender,
-            body: preview.text.isEmpty ? "New message" : preview.text,
+            body: Preferences.showMessagePreview && !preview.text.isEmpty ? preview.text : String(localized: "New message"),
             tag: threadID,
             icon: icon,
             silent: true
