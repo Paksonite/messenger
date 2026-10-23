@@ -27,6 +27,7 @@ For the Web Inspector: `defaults write pl.paksonite.messenger WebInspectorEnable
 | ⌘F | A visible `input[type=search]` or `input[role=combobox]` | `shortcuts.js` | Nothing focused |
 | Realtime connection | Messenger falling back from `SharedWorker` to dedicated workers | `workarounds.js` | Messages stuck at "Sending…" after a while |
 | Idle audio | Messenger playing its sounds through `AudioContext` source nodes (`AudioBufferSourceNode.start`) | `workarounds.js` | Audio monitors show Messenger playing sound all the time again, or a sound is cut off/missing after a quiet period |
+| No "Now Playing" entry | Message sounds as `<audio>` from `static.*.fbcdn.net`, downloadable with CORS from messenger.com | `sounds.js` | Now Playing widgets and menu bar audio indicators show Messenger permanently; the log says "sound through Web Audio failed" |
 | Last chat at launch | Conversation URLs `/t/<id>` and `/e2ee/t/<id>` | `NavigationPolicy.swift` | Opens the start page |
 
 When something breaks: turn on verbose logging, reproduce it, compare the logged rows, labels or titles with the patterns above, and add a test to `Tests/js/text-rules.test.mjs` (row text) or the Swift tests before changing the pattern.
