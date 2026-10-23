@@ -22,6 +22,8 @@ const timing = {
   rowRetryDelay: 800,
   // How often the chat list snapshot is refreshed while nothing arrives.
   snapshotInterval: 30000,
+  // How long an AudioContext may stay running without any sound before it is suspended.
+  audioIdleSuspend: 3000,
 };
 
 // Click targets for delivered notifications, by notification id.
