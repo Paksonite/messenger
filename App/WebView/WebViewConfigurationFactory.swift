@@ -8,6 +8,7 @@ enum WebViewConfigurationFactory {
         "core",
         "text-rules",
         "workarounds",
+        "sounds",
         "notification-api",
         "chat-list",
         "incoming-messages",
