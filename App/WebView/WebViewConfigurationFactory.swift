@@ -11,6 +11,7 @@ enum WebViewConfigurationFactory {
         "sounds",
         "notification-api",
         "chat-list",
+        "layout",
         "incoming-messages",
         "shortcuts",
         "diagnostics",
